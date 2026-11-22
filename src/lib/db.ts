@@ -1,16 +1,29 @@
-import { Pool } from 'pg';
+import { Pool, QueryResult, QueryResultRow } from 'pg';
 
-const globalForPg = global as unknown as { pool: Pool };
+const globalForPg = globalThis as unknown as {
+    pgPool: Pool | undefined;
+};
 
 export const pool =
-    globalForPg.pool ||
+    globalForPg.pgPool ??
     new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: {
-            rejectUnauthorized: false, // Supabase bulut bağlantısı için zorunlu
+            rejectUnauthorized: false, // Supabase SSL bağlantısı için gerekli
         },
+        max: 10,
     });
 
-if (process.env.NODE_ENV !== 'production') globalForPg.pool = pool;
+if (process.env.NODE_ENV !== 'production') {
+    globalForPg.pgPool = pool;
+}
 
-export default pool;
+/**
+ * Tüm manuel SQL sorguları bu fonksiyon üzerinden parametreli ($1, $2...) çalıştırılır.
+ */
+export async function query<T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    params?: unknown[]
+): Promise<QueryResult<T>> {
+    return pool.query<T>(text, params);
+}
