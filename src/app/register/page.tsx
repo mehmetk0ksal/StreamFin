@@ -1,10 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { movieReturnPath } from '@/lib/auth-return';
 import Link from 'next/link';
 
 export default function RegisterPage() {
+    return <Suspense><RegisterForm /></Suspense>;
+}
+
+function RegisterForm() {
+    const next = movieReturnPath(useSearchParams().get('next'));
     const router = useRouter();
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
@@ -48,7 +54,7 @@ export default function RegisterPage() {
                 return;
             }
 
-            router.push('/profile');
+            router.push(next);
             router.refresh();
         } catch {
             setError('Sunucuya bağlanılamadı. Lütfen tekrar deneyin.');
@@ -143,7 +149,7 @@ export default function RegisterPage() {
 
                 <p className="mt-6 text-center text-sm text-zinc-400">
                     Zaten hesabın var mı?{' '}
-                    <Link href="/login" className="font-medium text-indigo-400 hover:underline">
+                    <Link href={next === '/profile' ? '/login' : '/login?next=' + encodeURIComponent(next)} className="font-medium text-indigo-400 hover:underline">
                         Giriş Yap
                     </Link>
                 </p>

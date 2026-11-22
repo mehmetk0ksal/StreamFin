@@ -1,10 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { movieReturnPath } from '@/lib/auth-return';
 import Link from 'next/link';
 
 export default function LoginPage() {
+    return <Suspense><LoginForm /></Suspense>;
+}
+
+function LoginForm() {
+    const next = movieReturnPath(useSearchParams().get('next'));
     const router = useRouter();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -30,7 +36,7 @@ export default function LoginPage() {
                 return;
             }
 
-            router.push('/profile');
+            router.push(next);
             router.refresh();
         } catch {
             setError('Sunucuya bağlanılamadı. Lütfen tekrar deneyin.');
@@ -95,7 +101,7 @@ export default function LoginPage() {
 
                 <p className="mt-6 text-center text-sm text-zinc-400">
                     Hesabın yok mu?{' '}
-                    <Link href="/register" className="font-medium text-indigo-400 hover:underline">
+                    <Link href={next === '/profile' ? '/register' : '/register?next=' + encodeURIComponent(next)} className="font-medium text-indigo-400 hover:underline">
                         Kayıt Ol
                     </Link>
                 </p>

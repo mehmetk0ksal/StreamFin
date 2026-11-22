@@ -1,0 +1,126 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model media_reviews {
+  review_id       Int               @id @default(autoincrement())
+  user_id         Int
+  media_type      String            @db.VarChar(20)
+  tmdb_id         Int
+  season_number   Int?
+  episode_number  Int?
+  media_title     String            @db.VarChar(255)
+  rating          Int               @db.SmallInt
+  review_text     String?
+  is_hidden       Boolean           @default(false)
+  created_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  users           users             @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  moderation_logs moderation_logs[]
+
+  @@index([media_type, tmdb_id, season_number, episode_number], map: "media_reviews_public_target_idx", where: raw("(is_hidden = false)"))
+  @@index([user_id, updated_at(sort: Desc), review_id(sort: Desc)], map: "media_reviews_user_updated_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model moderation_logs {
+  log_id        Int           @id @default(autoincrement())
+  admin_user_id Int
+  review_id     Int
+  action        String        @db.VarChar(20)
+  reason        String
+  created_at    DateTime?     @default(now()) @db.Timestamptz(6)
+  users         users         @relation(fields: [admin_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  media_reviews media_reviews @relation(fields: [review_id], references: [review_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model playlist_tracks {
+  playlist_track_id Int       @id @default(autoincrement())
+  playlist_id       Int
+  audius_track_id   String    @db.VarChar(100)
+  track_title       String    @db.VarChar(200)
+  artist_name       String    @db.VarChar(150)
+  artwork_url       String?
+  duration_seconds  Int?
+  track_order       Int
+  added_at          DateTime? @default(now()) @db.Timestamptz(6)
+  playlists         playlists @relation(fields: [playlist_id], references: [playlist_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([playlist_id, audius_track_id])
+}
+
+model playlists {
+  playlist_id     Int               @id @default(autoincrement())
+  user_id         Int
+  title           String            @db.VarChar(120)
+  description     String?           @default("")
+  is_public       Boolean           @default(true)
+  created_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  playlist_tracks playlist_tracks[]
+  users           users             @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model roles {
+  role_id   Int     @id @default(autoincrement())
+  role_name String  @unique @db.VarChar(20)
+  users     users[]
+}
+
+model saved_videos {
+  saved_video_id   Int       @id @default(autoincrement())
+  user_id          Int
+  youtube_video_id String    @db.VarChar(50)
+  video_title      String    @db.VarChar(255)
+  channel_title    String?   @db.VarChar(150)
+  thumbnail_url    String?
+  personal_note    String?   @default("")
+  saved_at         DateTime? @default(now()) @db.Timestamptz(6)
+  users            users     @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, youtube_video_id])
+}
+
+model users {
+  user_id         Int               @id @default(autoincrement())
+  role_id         Int               @default(1)
+  username        String            @unique @db.VarChar(50)
+  email           String            @unique @db.VarChar(120)
+  password_hash   String
+  bio             String?           @default("")
+  avatar_url      String?
+  is_active       Boolean           @default(true)
+  created_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  media_reviews   media_reviews[]
+  moderation_logs moderation_logs[]
+  playlists       playlists[]
+  saved_videos    saved_videos[]
+  roles           roles             @relation(fields: [role_id], references: [role_id], onDelete: NoAction, onUpdate: NoAction)
+  watchlists      watchlists[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model watchlists {
+  watchlist_id Int       @id @default(autoincrement())
+  user_id      Int
+  media_type   String    @db.VarChar(10)
+  tmdb_id      Int
+  media_title  String    @db.VarChar(255)
+  poster_path  String?
+  status       String    @db.VarChar(20)
+  updated_at   DateTime? @default(now()) @db.Timestamptz(6)
+  users        users     @relation(fields: [user_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, media_type, tmdb_id])
+  @@index([user_id, updated_at(sort: Desc), watchlist_id(sort: Desc)], map: "watchlists_user_updated_idx")
+}

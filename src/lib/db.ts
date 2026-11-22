@@ -4,14 +4,18 @@ const globalForPg = globalThis as unknown as {
     pgPool: Pool | undefined;
 };
 
+const connectionString = process.env.DATABASE_URL;
+const local = connectionString && ['localhost', '127.0.0.1', '[::1]'].includes(new URL(connectionString).hostname);
+
 export const pool =
     globalForPg.pgPool ??
     new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: {
+        connectionString,
+        ssl: local ? false : {
             rejectUnauthorized: false, // Supabase SSL bağlantısı için gerekli
         },
         max: 10,
+        connectionTimeoutMillis: 5000,
     });
 
 if (process.env.NODE_ENV !== 'production') {

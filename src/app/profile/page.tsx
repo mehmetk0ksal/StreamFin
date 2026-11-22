@@ -1,6 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import Link from 'next/link';
+import { detailHref, useLibraryData } from '@/components/LibraryControls';
+import { STATUS_LABELS, type Review, type WatchlistEntry } from '@/lib/library-types';
 
 type TabKey = 'movies' | 'tv' | 'music' | 'videos';
 
@@ -18,81 +21,71 @@ interface ProfileData {
     total_saved_videos: number;
 }
 
+type ActivityReview = Pick<Review, 'review_id' | 'tmdb_id' | 'media_title' | 'rating' | 'review_text' | 'is_hidden' | 'created_at'>;
+type TvReview = ActivityReview & Pick<Review, 'media_type' | 'season_number' | 'episode_number'>;
+type ActivityWatch = Pick<WatchlistEntry, 'watchlist_id' | 'tmdb_id' | 'media_title' | 'status' | 'poster_path' | 'updated_at'>;
+
+interface ProfileActivity {
+    movies: { reviews: ActivityReview[]; watchlist: ActivityWatch[] };
+    tv: { reviews: TvReview[]; watchlist: ActivityWatch[] };
+    music: { playlists: { playlist_id: number; title: string; description: string | null; track_count: number }[] };
+    videos: { saved: { saved_video_id: number; video_title: string; channel_title: string; personal_note: string | null }[] };
+}
+
 export default function ProfilePage() {
-    const [profile, setProfile] = useState<ProfileData | null>(null);
-    const [activity, setActivity] = useState<any>(null);
+    const [revision, setRevision] = useState(0);
+    const result = useLibraryData<{ profile?: ProfileData }>('/api/profile', revision);
+    if (result.status === 'loading') return <p role="status" className="p-8 text-center">Profilin yükleniyor…</p>;
+    if (result.status === 'error' && result.unauthorized) {
+        return <p className="p-8 text-center">Profilini görüntülemek için <Link className="text-cyan-300 underline" href="/login">giriş yap</Link>.</p>;
+    }
+    if (result.status === 'error' || !result.data.profile) {
+        return <div className="space-y-2 p-8 text-center"><p role="alert">{result.status === 'error' ? result.message : 'Profil bulunamadı.'}</p>
+            <button className="text-cyan-300 underline" onClick={() => setRevision((v) => v + 1)}>Tekrar dene</button>
+        </div>;
+    }
+    return <ProfileContent initial={result.data.profile} />;
+}
+
+function ProfileContent({ initial }: { initial: ProfileData }) {
+    const [profile, setProfile] = useState(initial);
     const [activeTab, setActiveTab] = useState<TabKey>('movies');
     const [search, setSearch] = useState('');
-    const [loading, setLoading] = useState(true);
-
-    // Profil düzenleme formu state'leri
-    const [username, setUsername] = useState('');
-    const [bio, setBio] = useState('');
-    const [avatarUrl, setAvatarUrl] = useState('');
+    const [query, setQuery] = useState('');
+    const [revision, setRevision] = useState(0);
+    const activityResult = useLibraryData<ProfileActivity>(`/api/profile/activity?q=${encodeURIComponent(query)}`, revision);
+    const activity = activityResult.status === 'ready' ? activityResult.data : null;
+    const [username, setUsername] = useState(initial.username);
+    const [bio, setBio] = useState(initial.bio || '');
+    const [avatarUrl, setAvatarUrl] = useState(initial.avatar_url || '');
     const [statusMsg, setStatusMsg] = useState('');
-
-    async function fetchProfileAndActivity(queryText = '') {
-        try {
-            const [profRes, actRes] = await Promise.all([
-                fetch('/api/profile'),
-                fetch(`/api/profile/activity?q=${encodeURIComponent(queryText)}`),
-            ]);
-
-            if (profRes.status === 401) {
-                setProfile(null);
-                setLoading(false);
-                return;
-            }
-
-            const profJson = await profRes.json();
-            const actJson = await actRes.json();
-
-            setProfile(profJson.profile);
-            setUsername(profJson.profile.username);
-            setBio(profJson.profile.bio || '');
-            setAvatarUrl(profJson.profile.avatar_url || '');
-            setActivity(actJson);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    useEffect(() => {
-        fetchProfileAndActivity();
-    }, []);
 
     async function handleProfileUpdate(e: React.FormEvent) {
         e.preventDefault();
         setStatusMsg('');
 
-        const res = await fetch('/api/profile', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, bio, avatar_url: avatarUrl }),
-        });
-
-        const data = await res.json();
-        if (!res.ok) {
-            setStatusMsg(data.error || 'Güncelleme başarısız.');
-            return;
+        try {
+            const res = await fetch('/api/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, bio, avatar_url: avatarUrl }),
+            });
+            const data = await res.json();
+            if (!res.ok || !data.profile) {
+                setStatusMsg(data.error || 'Güncelleme başarısız.');
+                return;
+            }
+            setProfile((prev) => ({ ...prev, ...data.profile }));
+            setStatusMsg('Profil başarıyla güncellendi.');
+        } catch {
+            setStatusMsg('Sunucuya ulaşılamadı. Lütfen tekrar deneyin.');
         }
-
-        setProfile((prev) => (prev ? { ...prev, ...data.profile } : prev));
-        setStatusMsg('Profil başarıyla güncellendi.');
     }
 
-    async function handleSearch(e: React.FormEvent) {
+    function handleSearch(e: React.FormEvent) {
         e.preventDefault();
-        await fetchProfileAndActivity(search);
-    }
-
-    if (loading) return <div className="p-8 text-center">Yükleniyor...</div>;
-    if (!profile) {
-        return (
-            <div className="p-8 text-center">
-                Bu sayfayı görüntülemek için giriş yapmalısınız.
-            </div>
-        );
+        setQuery(search.trim());
+        setRevision((v) => v + 1);
     }
 
     return (
@@ -198,75 +191,20 @@ export default function ProfilePage() {
 
                 {/* Sekme İçerikleri */}
                 <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 text-zinc-100">
-                    {activeTab === 'movies' && (
-                        <div className="space-y-4">
-                            <h2 className="font-semibold text-zinc-300">Film İncelemelerim</h2>
-                            {activity?.movies?.reviews?.length ? (
-                                activity.movies.reviews.map((r: any) => (
-                                    <div key={r.review_id} className="rounded-lg bg-zinc-950 p-3">
-                                        <div className="flex justify-between">
-                                            <span className="font-medium">{r.media_title}</span>
-                                            <span className="text-amber-400">★ {r.rating}/10</span>
-                                        </div>
-                                        <p className="mt-1 text-sm text-zinc-400">{r.review_text}</p>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-sm text-zinc-500">Henüz film incelemesi yok.</p>
-                            )}
-
-                            <h2 className="pt-2 font-semibold text-zinc-300">Film İzleme Listem</h2>
-                            {activity?.movies?.watchlist?.length ? (
-                                activity.movies.watchlist.map((w: any) => (
-                                    <div key={w.watchlist_id} className="flex justify-between rounded-lg bg-zinc-950 p-3 text-sm">
-                                        <span>{w.media_title}</span>
-                                        <span className="text-zinc-400">{w.status}</span>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-sm text-zinc-500">Film izleme listesi boş.</p>
-                            )}
-                        </div>
+                    {activityResult.status === 'loading' && <p role="status" className="text-sm text-zinc-400">Etkinliklerin yükleniyor…</p>}
+                    {activityResult.status === 'error' && <div className="space-y-2">
+                        <p role="alert" className="text-sm">{activityResult.message}</p>
+                        <button className="text-sm text-cyan-300 underline" onClick={() => setRevision((v) => v + 1)}>Tekrar dene</button>
+                    </div>}
+                    {activity && (activeTab === 'movies' || activeTab === 'tv') && (
+                        <ProfileMediaActivity type={activeTab === 'movies' ? 'movie' : 'tv'} items={activity[activeTab]} />
                     )}
 
-                    {activeTab === 'tv' && (
-                        <div className="space-y-4">
-                            <h2 className="font-semibold text-zinc-300">Dizi İncelemelerim</h2>
-                            {activity?.tv?.reviews?.length ? (
-                                activity.tv.reviews.map((r: any) => (
-                                    <div key={r.review_id} className="rounded-lg bg-zinc-950 p-3">
-                                        <div className="flex justify-between">
-                                            <span className="font-medium">
-                                                {r.media_title} ({r.media_type})
-                                            </span>
-                                            <span className="text-amber-400">★ {r.rating}/10</span>
-                                        </div>
-                                        <p className="mt-1 text-sm text-zinc-400">{r.review_text}</p>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-sm text-zinc-500">Henüz dizi incelemesi yok.</p>
-                            )}
-
-                            <h2 className="pt-2 font-semibold text-zinc-300">Dizi İzleme Listem</h2>
-                            {activity?.tv?.watchlist?.length ? (
-                                activity.tv.watchlist.map((w: any) => (
-                                    <div key={w.watchlist_id} className="flex justify-between rounded-lg bg-zinc-950 p-3 text-sm">
-                                        <span>{w.media_title}</span>
-                                        <span className="text-zinc-400">{w.status}</span>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-sm text-zinc-500">Dizi izleme listesi boş.</p>
-                            )}
-                        </div>
-                    )}
-
-                    {activeTab === 'music' && (
+                    {activity && activeTab === 'music' && (
                         <div className="space-y-3">
                             <h2 className="font-semibold text-zinc-300">Çalma Listelerim</h2>
                             {activity?.music?.playlists?.length ? (
-                                activity.music.playlists.map((p: any) => (
+                                activity.music.playlists.map((p) => (
                                     <div key={p.playlist_id} className="flex justify-between rounded-lg bg-zinc-950 p-3">
                                         <div>
                                             <p className="font-medium">{p.title}</p>
@@ -281,11 +219,11 @@ export default function ProfilePage() {
                         </div>
                     )}
 
-                    {activeTab === 'videos' && (
+                    {activity && activeTab === 'videos' && (
                         <div className="space-y-3">
                             <h2 className="font-semibold text-zinc-300">Kaydettiğim Videolar</h2>
                             {activity?.videos?.saved?.length ? (
-                                activity.videos.saved.map((v: any) => (
+                                activity.videos.saved.map((v) => (
                                     <div key={v.saved_video_id} className="rounded-lg bg-zinc-950 p-3">
                                         <p className="font-medium">{v.video_title}</p>
                                         <p className="text-xs text-zinc-400">{v.channel_title}</p>
@@ -300,6 +238,50 @@ export default function ProfilePage() {
                 </div>
             </section>
         </main>
+    );
+}
+
+function ProfileMediaActivity({ type, items }: {
+    type: 'movie' | 'tv';
+    items: { reviews: (ActivityReview & Partial<Pick<TvReview, 'media_type' | 'season_number' | 'episode_number'>>)[]; watchlist: ActivityWatch[] };
+}) {
+    const label = type === 'movie' ? 'Film' : 'Dizi';
+    const manage = 'text-sm text-cyan-300 hover:underline';
+    return (
+        <div className="space-y-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="font-semibold text-zinc-300">{label} İncelemelerim</h2>
+                <Link className={manage} href={`/movies/library?type=${type}&tab=reviews`}>İncelemelerimi yönet</Link>
+            </div>
+            {items.reviews.length ? items.reviews.map((r) => {
+                const context = [
+                    r.season_number != null ? `${r.season_number}. sezon` : '',
+                    r.episode_number != null ? `${r.episode_number}. bölüm` : '',
+                ].filter(Boolean).join(' · ');
+                return (
+                    <div key={r.review_id} className="rounded-lg bg-zinc-950 p-3">
+                        <div className="flex items-baseline justify-between gap-2">
+                            <Link className="font-medium hover:text-cyan-300" href={detailHref(r.media_type ?? type, r.tmdb_id, r.season_number, r.episode_number)}>
+                                {r.media_title}{context && <span className="ml-2 text-sm text-zinc-400">{context}</span>}
+                            </Link>
+                            <span className="shrink-0 text-amber-400">★ {r.rating}/10</span>
+                        </div>
+                        {r.review_text && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-zinc-400">{r.review_text}</p>}
+                        {r.is_hidden && <p className="mt-1 text-xs text-zinc-400">Moderasyon nedeniyle gizlendi.</p>}
+                    </div>
+                );
+            }) : <p className="text-sm text-zinc-400">Gösterilecek inceleme yok.</p>}
+            <div className="flex flex-wrap items-baseline justify-between gap-2 pt-2">
+                <h2 className="font-semibold text-zinc-300">{label} İzleme Listem</h2>
+                <Link className={manage} href={`/movies/library?type=${type}&tab=watchlist`}>İzleme listemi yönet</Link>
+            </div>
+            {items.watchlist.length ? items.watchlist.map((w) => (
+                <div key={w.watchlist_id} className="flex justify-between gap-2 rounded-lg bg-zinc-950 p-3 text-sm">
+                    <Link className="hover:text-cyan-300" href={detailHref(type, w.tmdb_id)}>{w.media_title}</Link>
+                    <span className="shrink-0 text-zinc-400">{STATUS_LABELS[w.status]}</span>
+                </div>
+            )) : <p className="text-sm text-zinc-400">Gösterilecek izleme kaydı yok.</p>}
+        </div>
     );
 }
 

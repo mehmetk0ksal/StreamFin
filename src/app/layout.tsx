@@ -1,33 +1,16 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import Navbar from "@/components/Navbar";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import type { Metadata } from 'next';
+import { Suspense } from 'react';
+import Navbar from '@/components/Navbar';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "StreamFin",
-  description: "StreamFin Media Discovery and Community Platform",
+  title: 'StreamFin',
+  description: 'Film ve dizileri keşfet, değerlendirmelerini yaz ve izleme listeni oluştur.',
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
-  return (
-    <html
-      lang="tr"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100">
-        <Navbar />
-        <div className="flex-1">{children}</div>
-      </body>
-    </html>
-  );
+export default function RootLayout({children}: {children: React.ReactNode}) {
+  return <html lang="tr"><body>
+    <Suspense fallback={<header className="site-header"/>}><Navbar/></Suspense>
+    {children}
+  </body></html>;
 }

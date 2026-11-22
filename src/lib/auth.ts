@@ -3,7 +3,10 @@ import { cookies } from 'next/headers';
 import { query } from './db';
 
 const COOKIE_NAME = 'streamfin_session';
-const secretKey = new TextEncoder().encode(process.env.JWT_SECRET);
+function signingKey() {
+    if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET tanımlanmalı.');
+    return new TextEncoder().encode(process.env.JWT_SECRET);
+}
 
 export interface SessionUser {
     user_id: number;
@@ -22,7 +25,7 @@ export async function createSessionToken(payload: {
         .setProtectedHeader({ alg: 'HS256' })
         .setIssuedAt()
         .setExpirationTime('7d')
-        .sign(secretKey);
+        .sign(signingKey());
 }
 
 export async function setAuthCookie(token: string) {
@@ -47,7 +50,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     if (!token) return null;
 
     try {
-        const { payload } = await jwtVerify(token, secretKey);
+        const { payload } = await jwtVerify(token, signingKey(), { algorithms: ['HS256'] });
         const userId = Number(payload.userId);
         if (!userId) return null;
 
